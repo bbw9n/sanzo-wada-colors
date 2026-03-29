@@ -209,6 +209,7 @@ sanzo-wada-colors/
 | `popular [n]` | Most-used colors |
 | `all [duo\|trio\|quad]` | List all palettes |
 | `stats` | Dataset summary |
+| `preview <ids\|mood\|all>` | Generate interactive HTML preview, open in browser. Accepts combo IDs (`42 125`), mood keywords (`autumn`), or `all` / `curated` / `accessible` |
 
 ---
 

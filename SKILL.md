@@ -62,6 +62,7 @@ Key commands:
 | `random [type]` | Random palette for exploration |
 | `popular [n]` | Most-used colors across all combinations |
 | `stats` | Dataset overview |
+| `preview <ids\|mood\|curated\|accessible\|all>` | Generate interactive HTML preview and open in browser |
 
 ## Workflow: How to Use This Skill
 
@@ -140,12 +141,43 @@ Tailor the output and advice to the user's field:
 
 ### Presenting Results
 
-Always present results visually when possible:
-- Render colored blocks/swatches (in HTML artifacts, use `div` elements with background colors)
-- Include the Wada color names — they're evocative and part of the experience
-- Include hex codes, RGB values, and combination number
-- Show contrast ratio data when accessibility is relevant
-- Include the curated design context note when available
+**Terminal output is the primary visual channel in Claude Code.** The `query_colors.py` script
+outputs ANSI 24-bit truecolor swatches (colored blocks) alongside every color. Most modern
+terminals render these natively (iTerm2, Kitty, Ghostty, Warp, Windows Terminal, Alacritty, etc.).
+
+**Always run the script and let its output show directly.** Do not manually reformat or
+summarize the script's output into plain text — the ANSI color blocks are the whole point.
+The user sees actual colored rectangles next to each color name and hex code in their terminal.
+
+Rules for presenting palettes:
+
+1. **Always use `query_colors.py` first.** Run the appropriate command (`palette`, `mood`,
+   `match`, `accessible`, etc.) and let the terminal output display directly to the user.
+   The script output contains ANSI-colored swatch blocks that render as visible colored
+   rectangles in the terminal — this is the visual preview.
+
+2. **Do not suppress, reformat, or paraphrase the script output.** The raw output is
+   intentionally designed for terminal display. Reformatting it into markdown or prose
+   strips the ANSI color codes and removes the visual swatches.
+
+3. **Add commentary after the script output, not instead of it.** After showing the raw
+   palette output, you can add your own analysis: explain why a palette fits the user's
+   needs, suggest color role assignments, note accessibility considerations, etc.
+
+4. **For richer preview, use the `preview` command.** When the user wants a more visual
+   experience beyond terminal swatches, run `preview` to generate an interactive HTML page
+   that opens in the browser:
+   ```bash
+   python3 <skill-dir>/query_colors.py preview 42 125 264
+   python3 <skill-dir>/query_colors.py preview curated
+   python3 <skill-dir>/query_colors.py preview autumn
+   python3 <skill-dir>/query_colors.py preview all
+   ```
+   This produces a full-page visual with large color swatches, contrast data, filtering
+   controls, and click-to-copy hex codes.
+
+5. **For web artifacts** (claude.ai, not Claude Code), render colored `<div>` elements
+   with background colors in HTML/React artifacts instead.
 
 ### Important Data Notes
 

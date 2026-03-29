@@ -20,6 +20,7 @@ Usage:
   python3 query_colors.py scss <combo_id>                   # Output SCSS variables
   python3 query_colors.py all [duo|trio|quad]               # List all palettes
   python3 query_colors.py stats                             # Dataset statistics
+  python3 query_colors.py preview <combo_ids|mood|all>      # Open visual HTML preview in browser
 """
 
 import json
@@ -650,6 +651,229 @@ def cmd_stats(args, colors, combos):
     print(f"  Curated with design context: {cu}")
 
 
+def _generate_preview_html(palettes, colors_db, title="Sanzo Wada — Color Preview"):
+    """Generate a self-contained HTML page for visually previewing palettes"""
+    cards_html = []
+    for combo in palettes:
+        cid = combo["id"]
+        ctype = combo.get(
+            "type", "duo" if cid <= 120 else "trio" if cid <= 240 else "quad"
+        )
+
+        # Color swatches
+        swatches = ""
+        color_labels = ""
+        for cc in combo["colors"]:
+            swatches += f'<div class="swatch" style="background:{cc["hex"]}" title="{cc["name"]} {cc["hex"]}"></div>\n'
+            color_labels += f'<div class="color-label"><span class="dot" style="background:{cc["hex"]}"></span>{cc["name"]}<code>{cc["hex"]}</code></div>\n'
+
+        # Badges
+        badges = f'<span class="badge type">{ctype}</span>'
+        if combo.get("contrast", {}).get("all_wcag_aa"):
+            badges += '<span class="badge aa">AA ✓</span>'
+        elif combo.get("contrast", {}).get("all_wcag_aa_large"):
+            badges += '<span class="badge aa-lg">AA-lg</span>'
+        if combo.get("colorblind_safe") == False:
+            badges += '<span class="badge cb-warn">CB ⚠</span>'
+        if "curated" in combo:
+            badges += '<span class="badge curated">★</span>'
+
+        # Curated note
+        note = ""
+        if "curated" in combo:
+            cur = combo["curated"]
+            note = f'<div class="note">{cur["context"]}<br><small>{", ".join(cur.get("mood", []))} · {", ".join(cur.get("domains", []))}</small></div>'
+
+        # Contrast details
+        contrast_html = ""
+        pairs = combo.get("contrast", {}).get("pairs", [])
+        if pairs:
+            contrast_html = '<div class="contrast">'
+            for p in pairs:
+                icon = {"AAA": "✅", "AA": "✅", "AA-large": "⚠️", "fail": "❌"}.get(
+                    p["grade"], ""
+                )
+                contrast_html += f'<div class="cpair">{icon} {p["ratio"]}:1 <small>{p["grade"]}</small></div>'
+            contrast_html += "</div>"
+
+        cards_html.append(f"""
+        <div class="card">
+            <div class="card-header">
+                <span class="combo-id">#{cid}</span>
+                {badges}
+            </div>
+            <div class="swatches">{swatches}</div>
+            <div class="color-labels">{color_labels}</div>
+            {contrast_html}
+            {note}
+        </div>""")
+
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{title}</title>
+<style>
+  * {{ margin:0; padding:0; box-sizing:border-box; }}
+  body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+         background: #f5f5f0; color: #2a2a2a; padding: 2rem; }}
+  h1 {{ font-size: 1.6rem; font-weight: 600; margin-bottom: 0.3rem; }}
+  .subtitle {{ color: #777; font-size: 0.85rem; margin-bottom: 2rem; }}
+  .grid {{ display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 1.5rem; }}
+  .card {{ background: #fff; border-radius: 12px; padding: 1.2rem; box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+           transition: box-shadow 0.2s; }}
+  .card:hover {{ box-shadow: 0 4px 16px rgba(0,0,0,0.1); }}
+  .card-header {{ display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.8rem; flex-wrap: wrap; }}
+  .combo-id {{ font-weight: 700; font-size: 1.1rem; color: #333; }}
+  .badge {{ font-size: 0.65rem; padding: 2px 7px; border-radius: 9999px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; }}
+  .badge.type {{ background: #e8e8e8; color: #555; }}
+  .badge.aa {{ background: #d4edda; color: #155724; }}
+  .badge.aa-lg {{ background: #fff3cd; color: #856404; }}
+  .badge.cb-warn {{ background: #f8d7da; color: #721c24; }}
+  .badge.curated {{ background: #e8daef; color: #6c3483; }}
+  .swatches {{ display: flex; border-radius: 8px; overflow: hidden; height: 80px; margin-bottom: 0.8rem; }}
+  .swatch {{ flex: 1; cursor: pointer; position: relative; transition: flex 0.2s; }}
+  .swatch:hover {{ flex: 1.5; }}
+  .swatch::after {{ content: attr(title); position: absolute; bottom: 4px; left: 50%; transform: translateX(-50%);
+                    font-size: 0.6rem; color: #fff; text-shadow: 0 1px 3px rgba(0,0,0,0.7);
+                    opacity: 0; transition: opacity 0.2s; white-space: nowrap; pointer-events: none; }}
+  .swatch:hover::after {{ opacity: 1; }}
+  .color-labels {{ display: flex; flex-direction: column; gap: 0.25rem; margin-bottom: 0.6rem; }}
+  .color-label {{ display: flex; align-items: center; gap: 0.4rem; font-size: 0.78rem; }}
+  .color-label code {{ color: #888; font-size: 0.7rem; margin-left: auto; }}
+  .dot {{ width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; border: 1px solid rgba(0,0,0,0.1); }}
+  .contrast {{ display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 0.5rem; }}
+  .cpair {{ font-size: 0.7rem; color: #666; }}
+  .note {{ font-size: 0.78rem; color: #555; background: #fafaf5; padding: 0.6rem 0.8rem;
+           border-radius: 6px; border-left: 3px solid #c9b458; margin-top: 0.4rem; line-height: 1.4; }}
+  .note small {{ color: #999; }}
+  .filter-bar {{ display: flex; gap: 0.6rem; margin-bottom: 1.5rem; flex-wrap: wrap; }}
+  .filter-btn {{ padding: 6px 14px; border-radius: 20px; border: 1px solid #ddd; background: #fff;
+                 font-size: 0.8rem; cursor: pointer; transition: all 0.15s; }}
+  .filter-btn:hover {{ border-color: #999; }}
+  .filter-btn.active {{ background: #333; color: #fff; border-color: #333; }}
+  .count {{ color: #999; font-size: 0.85rem; margin-bottom: 1rem; }}
+  @media (max-width: 600px) {{ .grid {{ grid-template-columns: 1fr; }} body {{ padding: 1rem; }} }}
+</style>
+</head>
+<body>
+<h1>🎨 {title}</h1>
+<p class="subtitle">Color combinations from "A Dictionary of Color Combinations" by Sanzo Wada (Seigensha, 2010)</p>
+<div class="filter-bar">
+  <button class="filter-btn active" onclick="filterCards('all')">All</button>
+  <button class="filter-btn" onclick="filterCards('duo')">Duos</button>
+  <button class="filter-btn" onclick="filterCards('trio')">Trios</button>
+  <button class="filter-btn" onclick="filterCards('quad')">Quads</button>
+  <button class="filter-btn" onclick="filterCards('aa')">WCAG AA ✓</button>
+  <button class="filter-btn" onclick="filterCards('curated')">★ Curated</button>
+</div>
+<p class="count"><span id="shown">{len(palettes)}</span> palettes</p>
+<div class="grid" id="grid">
+{"".join(cards_html)}
+</div>
+<script>
+function filterCards(type) {{
+  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+  event.target.classList.add('active');
+  let shown = 0;
+  document.querySelectorAll('.card').forEach(card => {{
+    const badges = card.querySelector('.card-header').textContent;
+    let show = true;
+    if (type === 'duo') show = badges.includes('duo');
+    else if (type === 'trio') show = badges.includes('trio');
+    else if (type === 'quad') show = badges.includes('quad');
+    else if (type === 'aa') show = badges.includes('AA ✓');
+    else if (type === 'curated') show = badges.includes('★');
+    card.style.display = show ? '' : 'none';
+    if (show) shown++;
+  }});
+  document.getElementById('shown').textContent = shown;
+}}
+document.querySelectorAll('.swatch').forEach(s => {{
+  s.addEventListener('click', () => {{
+    const hex = s.title.split(' ').pop();
+    navigator.clipboard.writeText(hex).then(() => {{
+      const orig = s.style.outline;
+      s.style.outline = '3px solid #333';
+      setTimeout(() => s.style.outline = orig, 400);
+    }});
+  }});
+}});
+</script>
+</body>
+</html>"""
+
+
+def cmd_preview(args, colors, combos):
+    """Generate an HTML preview and open it in the browser"""
+    import subprocess, tempfile
+
+    if not args or args[0] == "all":
+        palettes = sorted(combos.values(), key=lambda c: c["id"])
+        title = "Sanzo Wada — All 348 Combinations"
+    elif args[0] == "curated":
+        palettes = [
+            c for c in sorted(combos.values(), key=lambda c: c["id"]) if "curated" in c
+        ]
+        title = "Sanzo Wada — Curated Palettes"
+    elif args[0] == "accessible":
+        palettes = [
+            c
+            for c in sorted(combos.values(), key=lambda c: c["id"])
+            if c.get("contrast", {}).get("all_wcag_aa") and c.get("color_count", 0) >= 2
+        ]
+        title = "Sanzo Wada — WCAG AA Accessible Palettes"
+    elif args[0] in MOOD_MAP:
+        # Collect all matching combos for this mood
+        terms = MOOD_MAP[args[0]]
+        matching = set()
+        for c in colors:
+            if any(t in c["name"].lower() for t in terms):
+                matching.update(c["combinations"])
+        palettes = [combos[cid] for cid in sorted(matching) if cid in combos]
+        title = f"Sanzo Wada — {args[0].title()} Palettes"
+    else:
+        # Treat as comma-separated combo IDs
+        try:
+            ids = [int(x.strip()) for x in " ".join(args).replace(",", " ").split()]
+            palettes = [combos[cid] for cid in ids if cid in combos]
+            title = f"Sanzo Wada — Combinations {', '.join(f'#{i}' for i in ids)}"
+        except ValueError:
+            print(f"Usage: preview <all|curated|accessible|mood_keyword|combo_id,...>")
+            return
+
+    if not palettes:
+        print("No palettes to preview.")
+        return
+
+    html = _generate_preview_html(palettes, colors, title)
+
+    # Write to a temp file and open
+    out_path = os.path.join(tempfile.gettempdir(), "sanzo-wada-preview.html")
+    with open(out_path, "w") as f:
+        f.write(html)
+
+    print(f"Preview saved to: {out_path}")
+    print(f"Showing {len(palettes)} palettes")
+
+    # Try to open in browser
+    import platform
+
+    system = platform.system()
+    try:
+        if system == "Darwin":
+            subprocess.run(["open", out_path], check=True)
+        elif system == "Linux":
+            subprocess.run(["xdg-open", out_path], check=True)
+        elif system == "Windows":
+            os.startfile(out_path)
+        else:
+            print(f"Open {out_path} in your browser to view.")
+    except Exception:
+        print(f"Could not auto-open. Open {out_path} in your browser.")
+
+
 COMMANDS = {
     "palette": cmd_palette,
     "search": cmd_search,
@@ -667,6 +891,7 @@ COMMANDS = {
     "scss": cmd_scss,
     "all": cmd_all,
     "stats": cmd_stats,
+    "preview": cmd_preview,
 }
 
 if __name__ == "__main__":
